@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'pages/dashboard_page.dart';
+import 'pages/splash_page.dart';
 
 void main() {
   runApp(const HAUMonstersApp());
@@ -14,7 +14,7 @@ class HAUMonstersApp extends StatelessWidget {
       title: 'HAU Monster Control Center',
       debugShowCheckedModeBanner: false,
       theme: _buildTheme(),
-      home: const DashboardPage(),
+      home: const SplashPage(),
     );
   }
 
@@ -104,7 +104,8 @@ class HAUMonstersApp extends StatelessWidget {
         backgroundColor: const Color(0xFF2A2A2A),
         contentTextStyle: const TextStyle(color: Colors.white),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
       dividerTheme: const DividerThemeData(
         color: Color(0xFF2C2C2C),

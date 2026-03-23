@@ -1,5 +1,5 @@
 name: haumonsters
-description: HAUPokemon Monster App - 6ADET Finals Skill Based Exam
+description: HAUPokemon Monster App - 6ADET Finals
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -14,6 +14,13 @@ dependencies:
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   geolocator: ^10.1.1
+  audioplayers: ^6.0.0
+  torch_light: ^1.1.0
+
+  # ── Local account storage ─────────────────────────────────
+  sqflite: ^2.3.0          # SQLite on-device database
+  path: ^1.9.0             # DB file path resolution
+  crypto: ^3.0.3           # SHA-256 password hashing
 
 dev_dependencies:
   flutter_test:
@@ -22,3 +29,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/sounds/monster_alarm.mp3

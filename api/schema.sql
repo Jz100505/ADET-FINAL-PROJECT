@@ -10,7 +10,7 @@ CREATE DATABASE IF NOT EXISTS haumonstersDB
 USE haumonstersDB;
 
 -- ------------------------------------------------------------
--- Table: monsterstbl  (PRIMARY focus for this exam)
+-- Table: monsterstbl
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS monsterstbl (
     monster_id          INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -25,14 +25,16 @@ CREATE TABLE IF NOT EXISTS monsterstbl (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ------------------------------------------------------------
--- Table: playerstbl
+-- Table: playerstbl  (FIXED - added username, password; removed email)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS playerstbl (
     player_id   INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
-    player_name VARCHAR(100)     NOT NULL,
-    email       VARCHAR(150)     NULL,
-    created_at  DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (player_id)
+    player_name VARCHAR(150)     NOT NULL,
+    username    VARCHAR(100)     NOT NULL,
+    password    VARCHAR(255)     NOT NULL,
+    created_at  DATETIME         NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (player_id),
+    UNIQUE KEY uq_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ------------------------------------------------------------
@@ -40,23 +42,29 @@ CREATE TABLE IF NOT EXISTS playerstbl (
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS locationstbl (
     location_id   INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
-    location_name VARCHAR(150)     NOT NULL,
-    latitude      DECIMAL(10,7)    NOT NULL,
-    longitude     DECIMAL(10,7)    NOT NULL,
+    location_name VARCHAR(100)     NOT NULL,
     PRIMARY KEY (location_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ------------------------------------------------------------
--- Table: monster_catchestbl
+-- Table: monster_catchestbl  (FIXED - added location_id FK,
+--                              renamed caught_at to catch_datetime,
+--                              removed standalone lat/lng columns)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS monster_catchestbl (
-    catch_id    INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
-    player_id   INT(10) UNSIGNED NOT NULL,
-    monster_id  INT(10) UNSIGNED NOT NULL,
-    caught_at   DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    latitude    DECIMAL(10,7)    NULL,
-    longitude   DECIMAL(10,7)    NULL,
+    catch_id       INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+    player_id      INT(10) UNSIGNED NOT NULL,
+    monster_id     INT(10) UNSIGNED NOT NULL,
+    location_id    INT(10) UNSIGNED NOT NULL,
+    latitude       DECIMAL(10,7)    NOT NULL,
+    longitude      DECIMAL(10,7)    NOT NULL,
+    catch_datetime DATETIME         NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (catch_id),
-    FOREIGN KEY (player_id)  REFERENCES playerstbl(player_id)  ON DELETE CASCADE,
-    FOREIGN KEY (monster_id) REFERENCES monsterstbl(monster_id) ON DELETE CASCADE
+    INDEX idx_player  (player_id),
+    INDEX idx_monster (monster_id),
+    INDEX idx_location (location_id),
+    FOREIGN KEY (player_id)   REFERENCES playerstbl(player_id)   ON DELETE CASCADE,
+    FOREIGN KEY (monster_id)  REFERENCES monsterstbl(monster_id) ON DELETE CASCADE,
+    FOREIGN KEY (location_id) REFERENCES locationstbl(location_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

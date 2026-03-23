@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/monster_model.dart';
@@ -9,9 +10,41 @@ import 'delete_monster_page.dart';
 import 'display_rankings_page.dart';
 import 'map_page.dart';
 import 'catch_monster_page.dart';
+import 'players_list_page.dart';
+import 'login_page.dart';
 
+// ─── Design tokens ─────────────────────────────────────────
+const _bg         = Color(0xFF0D0D14);
+const _surface    = Color(0xFF12121A);
+const _elevated   = Color(0xFF1A1A26);
+const _border     = Color(0xFF252535);
+const _textPrimary   = Colors.white;
+const _textSecondary = Color(0xFF8A8A9A);
+const _textMuted     = Color(0xFF4A4A5A);
+const _accentRed     = Color(0xFFE53935);
+const _accentGreen   = Color(0xFF1D9E75);
+const _accentBlue    = Color(0xFF378ADD);
+
+Color _typeColor(String type) {
+  switch (type.toLowerCase()) {
+    case 'fire':     return const Color(0xFFE53935);
+    case 'water':    return const Color(0xFF378ADD);
+    case 'grass':    return const Color(0xFF1D9E75);
+    case 'electric': return const Color(0xFFEF9F27);
+    case 'psychic':  return const Color(0xFF7F77DD);
+    case 'ice':      return const Color(0xFF5DCAA5);
+    case 'rock':     return const Color(0xFF888780);
+    case 'ghost':    return const Color(0xFF534AB7);
+    case 'dragon':   return const Color(0xFFD85A30);
+    default:         return const Color(0xFF6B6B7B);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key});
+  final int?    playerId;
+  final String? playerName;
+  const DashboardPage({super.key, this.playerId, this.playerName});
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -20,75 +53,54 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage>
     with TickerProviderStateMixin {
 
-  // ─── State ─────────────────────────────────────────────────
+  // ── State ─────────────────────────────────────────────────
   List<Monster> _allMonsters      = [];
   List<Monster> _filteredMonsters = [];
   bool          _isLoading        = true;
-  bool          _isSearching      = false;
   String        _searchQuery      = '';
   String        _selectedType     = 'All';
+  int           _navIndex         = 0;
 
-  final TextEditingController _searchCtrl  = TextEditingController();
-  final ScrollController       _scrollCtrl = ScrollController();
+  final _searchCtrl  = TextEditingController();
+  final _scrollCtrl  = ScrollController();
 
-  // ─── Animations ────────────────────────────────────────────
+  // ── Animations ────────────────────────────────────────────
   late AnimationController _headerAnim;
-  late AnimationController _fabAnim;
   late AnimationController _listAnim;
   late Animation<double>   _headerFade;
   late Animation<Offset>   _headerSlide;
-  late Animation<double>   _fabScale;
 
-  static const List<String> _types = [
-    'All', 'Fire', 'Water', 'Grass', 'Electric',
-    'Psychic', 'Ice', 'Rock', 'Ghost', 'Dragon',
+  static const _types = [
+    'All','Fire','Water','Grass','Electric',
+    'Psychic','Ice','Rock','Ghost','Dragon',
   ];
 
-  // ─── Lifecycle ─────────────────────────────────────────────
+  // ── Lifecycle ─────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
-    _initAnimations();
-    _loadData();
-  }
-
-  void _initAnimations() {
     _headerAnim = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 700));
-    _fabAnim = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 400));
+        vsync: this, duration: const Duration(milliseconds: 750));
     _listAnim = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 600));
-
-    _headerFade = CurvedAnimation(
-        parent: _headerAnim, curve: Curves.easeOut);
+        vsync: this, duration: const Duration(milliseconds: 700));
+    _headerFade = CurvedAnimation(parent: _headerAnim, curve: Curves.easeOut);
     _headerSlide = Tween<Offset>(
-        begin: const Offset(0, -0.3), end: Offset.zero)
+            begin: const Offset(0, -0.15), end: Offset.zero)
         .animate(CurvedAnimation(
             parent: _headerAnim, curve: Curves.easeOutCubic));
-    _fabScale = CurvedAnimation(
-        parent: _fabAnim, curve: Curves.elasticOut);
-
-    _scrollCtrl.addListener(() {
-      if (_scrollCtrl.offset > 80 && !_fabAnim.isCompleted) {
-        _fabAnim.forward();
-      } else if (_scrollCtrl.offset <= 80 && _fabAnim.isCompleted) {
-        _fabAnim.reverse();
-      }
-    });
+    _loadData();
   }
 
   @override
   void dispose() {
     _headerAnim.dispose();
-    _fabAnim.dispose();
     _listAnim.dispose();
     _searchCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
   }
 
-  // ─── Data ──────────────────────────────────────────────────
+  // ── Data ──────────────────────────────────────────────────
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
@@ -99,509 +111,482 @@ class _DashboardPageState extends State<DashboardPage>
         _filteredMonsters = monsters;
         _isLoading        = false;
       });
-      _headerAnim.forward();
-      _listAnim.forward();
-      _fabAnim.forward();
+      _headerAnim.forward(from: 0);
+      _listAnim.forward(from: 0);
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      _showSnackBar('Failed to load monsters: $e', const Color(0xFFE24B4A));
+      _snack('Failed to load: $e', _accentRed);
     }
   }
 
   void _applyFilters() {
-    List<Monster> result = List.from(_allMonsters);
+    var result = List<Monster>.from(_allMonsters);
     if (_selectedType != 'All') {
-      result = result.where((m) =>
-          m.monsterType.toLowerCase() == _selectedType.toLowerCase()).toList();
+      result = result
+          .where((m) => m.monsterType.toLowerCase() == _selectedType.toLowerCase())
+          .toList();
     }
     if (_searchQuery.isNotEmpty) {
-      result = result.where((m) =>
-          m.monsterName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          m.monsterType.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+      result = result
+          .where((m) =>
+              m.monsterName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+              m.monsterType.toLowerCase().contains(_searchQuery.toLowerCase()))
+          .toList();
     }
     setState(() => _filteredMonsters = result);
   }
 
-  // ─── Delete ────────────────────────────────────────────────
-  Future<void> _deleteMonster(Monster monster) async {
-    final confirmed = await showGeneralDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Dismiss',
-      barrierColor: Colors.black87,
-      transitionDuration: const Duration(milliseconds: 300),
-      transitionBuilder: (_, anim, __, child) => ScaleTransition(
-        scale: CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
-        child: FadeTransition(opacity: anim, child: child),
-      ),
-      pageBuilder: (_, __, ___) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded,
-                color: Color(0xFFE24B4A), size: 24),
-            SizedBox(width: 10),
-            Text('Delete Monster',
-                style: TextStyle(color: Colors.white, fontSize: 17)),
-          ],
-        ),
-        content: RichText(
-          text: TextSpan(
-            style: const TextStyle(
-                color: Color(0xFF9E9E9E), fontSize: 14, height: 1.5),
-            children: [
-              const TextSpan(text: 'Are you sure you want to delete '),
-              TextSpan(
-                text: monster.monsterName,
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w600)),
-              const TextSpan(text: '? This cannot be undone.'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: Color(0xFF9E9E9E))),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFE24B4A),
-              minimumSize: const Size(80, 38),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
+  // ── Computed ──────────────────────────────────────────────
+  int get _available =>
+      _allMonsters.where((m) => !m.monsterName.endsWith('(Captured)')).length;
+  int get _captured =>
+      _allMonsters.where((m) => m.monsterName.endsWith('(Captured)')).length;
 
-    if (confirmed != true) return;
-
-    try {
-      final result =
-          await ApiService.deleteMonster(monsterId: monster.monsterId);
-      if (!mounted) return;
-      _showSnackBar(
-        result['success'] == true
-            ? '${monster.monsterName} deleted.'
-            : result['message']?.toString() ?? 'Failed',
-        result['success'] == true
-            ? const Color(0xFF1D9E75)
-            : const Color(0xFFE24B4A),
-      );
-      if (result['success'] == true) _loadData();
-    } catch (e) {
-      if (!mounted) return;
-      _showSnackBar('Error: $e', const Color(0xFFE24B4A));
-    }
-  }
-
-  // ─── Navigation ────────────────────────────────────────────
-  Future<void> _goTo(Widget screen) async {
+  // ── Actions ───────────────────────────────────────────────
+  Future<void> _push(Widget page) async {
     await Navigator.push(
       context,
       PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 400),
-        pageBuilder: (_, anim, __) => screen,
-        transitionsBuilder: (_, anim, __, child) => SlideTransition(
+        transitionDuration: const Duration(milliseconds: 320),
+        pageBuilder: (_, a, __) => page,
+        transitionsBuilder: (_, a, __, child) => SlideTransition(
           position: Tween<Offset>(
-              begin: const Offset(1, 0), end: Offset.zero)
-              .animate(CurvedAnimation(
-                  parent: anim, curve: Curves.easeOutCubic)),
+                  begin: const Offset(1, 0), end: Offset.zero)
+              .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
           child: child,
         ),
       ),
     );
     _loadData();
+    if (mounted) setState(() => _navIndex = 0);
   }
 
-  void _showSnackBar(String message, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: color,
-      duration: const Duration(seconds: 2),
-    ));
+  void _onNavTap(int i) {
+    if (i == 0) return;
+    setState(() => _navIndex = i);
+    switch (i) {
+      case 1: _push(CatchMonsterPage(playerId: widget.playerId)); break;
+      case 2: _push(const MapPage()); break;
+      case 3: _push(const MonsterListPage()); break;
+    }
   }
 
-  // ─── Build ─────────────────────────────────────────────────
+  Future<void> _deleteMonster(Monster m) async {
+    final ok = await showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'dismiss',
+      barrierColor: Colors.black87,
+      transitionDuration: const Duration(milliseconds: 260),
+      transitionBuilder: (_, a, __, child) => ScaleTransition(
+        scale: CurvedAnimation(parent: a, curve: Curves.easeOutBack),
+        child: FadeTransition(opacity: a, child: child),
+      ),
+      pageBuilder: (_, __, ___) => AlertDialog(
+        backgroundColor: _elevated,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(children: [
+          Icon(Icons.warning_amber_rounded, color: Color(0xFFE24B4A), size: 20),
+          SizedBox(width: 10),
+          Text('Delete Monster',
+              style: TextStyle(color: _textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
+        ]),
+        content: RichText(
+          text: TextSpan(
+            style: const TextStyle(color: _textSecondary, fontSize: 13, height: 1.5),
+            children: [
+              const TextSpan(text: 'Remove '),
+              TextSpan(
+                  text: m.monsterName,
+                  style: const TextStyle(color: _textPrimary, fontWeight: FontWeight.w700)),
+              const TextSpan(text: ' from the registry permanently?'),
+            ],
+          ),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: _textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE24B4A),
+              minimumSize: const Size(84, 38),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 0,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final res = await ApiService.deleteMonster(monsterId: m.monsterId);
+      if (!mounted) return;
+      _snack(
+        res['success'] == true ? '${m.monsterName} removed.' : res['message']?.toString() ?? 'Failed',
+        res['success'] == true ? _accentGreen : _accentRed,
+      );
+      if (res['success'] == true) _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      _snack('Error: $e', _accentRed);
+    }
+  }
+
+  void _logout() => Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+        (r) => false,
+      );
+
+  void _snack(String msg, Color color) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(msg),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      ));
+
+  // ── Build ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
-        backgroundColor: const Color(0xFF121212),
-        drawer: _buildDrawer(),
-        body: RefreshIndicator(
-          color: const Color(0xFFE53935),
-          backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: _bg,
+        body: Stack(children: [
+          // ── Partial hex grid — header area only, fades out ──
+          Positioned(
+            top: 0, left: 0, right: 0,
+            height: 260,
+            child: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.white, Colors.transparent],
+                stops: [0.45, 1.0],
+              ).createShader(bounds),
+              blendMode: BlendMode.dstIn,
+              child: CustomPaint(painter: _HexGridPainter()),
+            ),
+          ),
+          // ── Main content ─────────────────────────────────────
+          RefreshIndicator(
+          color: _accentRed,
+          backgroundColor: _elevated,
           onRefresh: _loadData,
           child: CustomScrollView(
             controller: _scrollCtrl,
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              _buildSliverAppBar(),
-              _buildQuickActions(),
-              _buildSearchBar(),
-              _buildTypeFilter(),
+              _buildHeader(),
+              _buildStatsStrip(),
+              _buildHeroActions(),
+              _buildSearchAndFilter(),
+              _buildRegistryLabel(),
               _buildMonsterList(),
             ],
           ),
         ),
+        ]),
         floatingActionButton: _buildFAB(),
+        bottomNavigationBar: _buildBottomNav(),
       ),
     );
   }
 
-  // ─── Drawer ────────────────────────────────────────────────
-  Widget _buildDrawer() {
-    return Drawer(
-      backgroundColor: const Color(0xFF1A1A1A),
-      child: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-              decoration: const BoxDecoration(
-                border: Border(
-                    bottom: BorderSide(color: Color(0xFF2C2C2C), width: 0.5)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 48, height: 48,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE53935).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                          color: const Color(0xFFE53935).withValues(alpha: 0.3),
-                          width: 0.5),
-                    ),
-                    child: const Icon(Icons.catching_pokemon,
-                        color: Color(0xFFE53935), size: 26),
+  // ── Header ────────────────────────────────────────────────
+  Widget _buildHeader() {
+    final name    = widget.playerName ?? 'Hunter';
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : 'H';
+
+    return SliverToBoxAdapter(
+      child: FadeTransition(
+        opacity: _headerFade,
+        child: SlideTransition(
+          position: _headerSlide,
+          child: Container(
+            padding: EdgeInsets.fromLTRB(
+                20, MediaQuery.of(context).padding.top + 18, 20, 16),
+            color: _bg,
+            child: Row(children: [
+              // Avatar — circular with person icon + glow
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _accentRed.withValues(alpha: 0.12),
+                  border: Border.all(
+                    color: _accentRed.withValues(alpha: 0.45),
+                    width: 1.5,
                   ),
-                  const SizedBox(height: 12),
-                  const Text('Monster Admin',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  Text('monster@app.local',
-                      style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.4),
-                          fontSize: 12)),
-                ],
+                  boxShadow: [
+                    BoxShadow(
+                      color: _accentRed.withValues(alpha: 0.22),
+                      blurRadius: 14,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.person_rounded,
+                  color: _accentRed,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+              // Greeting
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('WELCOME BACK',
+                        style: TextStyle(
+                            color: _textMuted,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.4)),
+                    const SizedBox(height: 2),
+                    Text(name,
+                        style: const TextStyle(
+                            color: _textPrimary,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.4)),
+                  ],
+                ),
+              ),
+              // Admin controls button
+              _IconBtn(
+                icon: Icons.tune_rounded,
+                onTap: _showAdminSheet,
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Stats strip ───────────────────────────────────────────
+  Widget _buildStatsStrip() {
+    return SliverToBoxAdapter(
+      child: FadeTransition(
+        opacity: _headerFade,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              color: _surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _border, width: 0.5),
+            ),
+            child: Row(children: [
+              // Total — neutral blue
+              _StatCell(
+                value: '${_allMonsters.length}',
+                label: 'TOTAL',
+                color: _accentBlue,
+              ),
+              _verticalDivider(),
+              // Available — green
+              _StatCell(
+                value: '$_available',
+                label: 'AVAILABLE',
+                color: _accentGreen,
+              ),
+              _verticalDivider(),
+              // Captured — red
+              _StatCell(
+                value: '$_captured',
+                label: 'CAPTURED',
+                color: _accentRed,
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _verticalDivider() =>
+      Container(width: 0.5, height: 32, color: _border);
+
+  // ── Hero actions ──────────────────────────────────────────
+  Widget _buildHeroActions() {
+    return SliverToBoxAdapter(
+      child: FadeTransition(
+        opacity: _headerFade,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Row(children: [
+            Expanded(
+              child: _HeroCard(
+                icon: Icons.catching_pokemon,
+                title: 'Catch',
+                sub: 'Hunt nearby monsters',
+                color: _accentGreen,
+                onTap: () => _push(CatchMonsterPage(playerId: widget.playerId)),
               ),
             ),
-            // Nav items
-            _drawerItem(Icons.dashboard_outlined, 'Dashboard',
-                () => Navigator.pop(context)),
-            _drawerItem(Icons.add_circle_outline, 'Add Monster',
-                () { Navigator.pop(context); _goTo(const AddMonsterPage()); }),
-            _drawerItem(Icons.edit_outlined, 'Edit Monsters',
-                () { Navigator.pop(context); _goTo(const EditMonstersPage()); }),
-            _drawerItem(Icons.delete_outline, 'Delete Monsters',
-                () { Navigator.pop(context); _goTo(const DeleteMonsterPage()); }),
-            _drawerItem(Icons.leaderboard_outlined, 'Top Monster Hunters',
-                () { Navigator.pop(context); _goTo(const MonsterListPage()); }),
-            _drawerItem(Icons.catching_pokemon_outlined, 'Catch Monsters',
-                () { Navigator.pop(context); _goTo(const CatchMonsterPage()); }),
-            _drawerItem(Icons.map_outlined, 'Monster Map',
-                () { Navigator.pop(context); _goTo(const MapPage()); }),
-          ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: _HeroCard(
+                icon: Icons.map_outlined,
+                title: 'Map',
+                sub: 'View spawn locations',
+                color: _accentBlue,
+                onTap: () => _push(const MapPage()),
+              ),
+            ),
+          ]),
         ),
       ),
     );
   }
 
-  Widget _drawerItem(IconData icon, String label, VoidCallback onTap) {
-    return ListTile(
-      leading: Icon(icon, color: const Color(0xFF9E9E9E), size: 20),
-      title: Text(label,
-          style: const TextStyle(color: Colors.white, fontSize: 14)),
-      onTap: onTap,
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-    );
-  }
-
-  // ─── Sliver App Bar ────────────────────────────────────────
-  Widget _buildSliverAppBar() {
-    return SliverAppBar(
-      expandedHeight: 160,
-      floating: false,
-      pinned: true,
-      backgroundColor: const Color(0xFF1E1E1E),
-      elevation: 0,
-      leading: Builder(
-        builder: (ctx) => IconButton(
-          icon: const Icon(Icons.menu_rounded, color: Color(0xFF9E9E9E)),
-          onPressed: () => Scaffold.of(ctx).openDrawer(),
+  // ── Search + filter ───────────────────────────────────────
+  Widget _buildSearchAndFilter() {
+    return SliverToBoxAdapter(
+      child: Column(children: [
+        // Search bar
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+          child: Container(
+            height: 44,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: _surface,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: _border, width: 0.5),
+            ),
+            child: TextField(
+              controller: _searchCtrl,
+              style: const TextStyle(color: _textPrimary, fontSize: 13),
+              onChanged: (v) { _searchQuery = v; _applyFilters(); },
+              decoration: InputDecoration(
+                hintText: 'Search monsters...',
+                hintStyle: const TextStyle(color: _textMuted, fontSize: 13),
+                prefixIcon: const Icon(Icons.search_rounded, color: _textMuted, size: 18),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.close_rounded, color: _textMuted, size: 16),
+                        onPressed: () { _searchCtrl.clear(); _searchQuery = ''; _applyFilters(); },
+                      )
+                    : null,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              ),
+            ),
+          ),
         ),
-      ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.refresh_rounded, color: Color(0xFF9E9E9E)),
-          onPressed: _loadData,
-        ),
-        const SizedBox(width: 4),
-      ],
-      flexibleSpace: FlexibleSpaceBar(background: _buildHeader()),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        border: Border(
-            bottom: BorderSide(color: Color(0xFF2C2C2C), width: 0.5)),
-      ),
-      padding: const EdgeInsets.fromLTRB(20, 60, 20, 16),
-      child: SlideTransition(
-        position: _headerSlide,
-        child: FadeTransition(
-          opacity: _headerFade,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 44, height: 44,
+        // Type filter chips
+        SizedBox(
+          height: 34,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.only(left: 20, right: 12),
+            itemCount: _types.length,
+            itemBuilder: (_, i) {
+              final t      = _types[i];
+              final active = _selectedType == t;
+              final color  = _typeColor(t);
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() => _selectedType = t);
+                    _applyFilters();
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE53935).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: const Color(0xFFE53935).withValues(alpha: 0.3),
-                          width: 0.5),
-                    ),
-                    child: const Icon(Icons.catching_pokemon,
-                        color: Color(0xFFE53935), size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Monster Control Center',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.white.withValues(alpha: 0.5),
-                              letterSpacing: 0.3)),
-                      const Text('HAU Admin',
-                          style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                              letterSpacing: 0.2)),
-                    ],
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2A2A2A),
+                      color: active ? color.withValues(alpha: 0.16) : _surface,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                          color: const Color(0xFF3A3A3A), width: 0.5),
+                        color: active ? color.withValues(alpha: 0.5) : _border,
+                        width: active ? 1.0 : 0.5,
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.pets,
-                            size: 13, color: Color(0xFF1D9E75)),
-                        const SizedBox(width: 5),
-                        Text(
-                          '${_allMonsters.length} monsters',
-                          style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF1D9E75),
-                              fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ─── Quick Actions ─────────────────────────────────────────
-  Widget _buildQuickActions() {
-    final actions = [
-      _QuickAction(icon: Icons.map_outlined, label: 'Monster\nMap',
-          color: const Color(0xFF378ADD),
-          onTap: () => _goTo(const MapPage())),
-      _QuickAction(icon: Icons.catching_pokemon, label: 'Catch\nMonster',
-          color: const Color(0xFF1D9E75),
-          onTap: () => _goTo(const CatchMonsterPage())),
-      _QuickAction(icon: Icons.leaderboard_outlined, label: 'Leader-\nboard',
-          color: const Color(0xFFEF9F27),
-          onTap: () => _goTo(const MonsterListPage())),
-      _QuickAction(icon: Icons.add_circle_outline, label: 'Add\nMonster',
-          color: const Color(0xFFE53935),
-          onTap: () => _goTo(const AddMonsterPage())),
-    ];
-
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-        child: Row(
-          children: actions.map((a) => Expanded(
-            child: _QuickActionTile(action: a),
-          )).toList(),
-        ),
-      ),
-    );
-  }
-
-  // ─── Search Bar ────────────────────────────────────────────
-  Widget _buildSearchBar() {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: _isSearching
-                  ? const Color(0xFFE53935).withValues(alpha: 0.5)
-                  : const Color(0xFF2C2C2C),
-              width: _isSearching ? 1.0 : 0.5,
-            ),
-          ),
-          child: TextField(
-            controller: _searchCtrl,
-            style: const TextStyle(color: Colors.white, fontSize: 14),
-            onTap: () => setState(() => _isSearching = true),
-            onTapOutside: (_) => setState(() => _isSearching = false),
-            onChanged: (v) {
-              _searchQuery = v;
-              _applyFilters();
-            },
-            decoration: InputDecoration(
-              hintText: 'Search monsters by name or type...',
-              hintStyle:
-                  const TextStyle(color: Color(0xFF616161), fontSize: 14),
-              prefixIcon: const Icon(Icons.search,
-                  color: Color(0xFF616161), size: 20),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear,
-                          color: Color(0xFF616161), size: 18),
-                      onPressed: () {
-                        _searchCtrl.clear();
-                        _searchQuery = '';
-                        _applyFilters();
-                      },
-                    )
-                  : null,
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 14),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ─── Type Filter ───────────────────────────────────────────
-  Widget _buildTypeFilter() {
-    return SliverToBoxAdapter(
-      child: SizedBox(
-        height: 48,
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          itemCount: _types.length,
-          itemBuilder: (_, i) {
-            final type   = _types[i];
-            final active = _selectedType == type;
-            return Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: GestureDetector(
-                onTap: () {
-                  setState(() => _selectedType = type);
-                  _applyFilters();
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: active
-                        ? const Color(0xFFE53935)
-                        : const Color(0xFF1E1E1E),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: active
-                          ? const Color(0xFFE53935)
-                          : const Color(0xFF2C2C2C),
-                      width: 0.5,
-                    ),
-                  ),
-                  child: Text(
-                    type,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                      color:
-                          active ? Colors.white : const Color(0xFF9E9E9E),
+                    child: Text(
+                      t,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: active ? FontWeight.w700 : FontWeight.w400,
+                        color: active ? color : _textSecondary,
+                        letterSpacing: 0.2,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
+        const SizedBox(height: 20),
+      ]),
+    );
+  }
+
+  // ── Registry label ────────────────────────────────────────
+  Widget _buildRegistryLabel() {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+        child: Row(children: [
+          const Text('MONSTER REGISTRY',
+              style: TextStyle(
+                  color: _textMuted,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.5)),
+          const SizedBox(width: 10),
+          const Expanded(child: Divider(color: _border, thickness: 0.5)),
+          const SizedBox(width: 10),
+          if (!_isLoading)
+            Text('${_filteredMonsters.length}',
+                style: const TextStyle(
+                    color: _textMuted,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700)),
+        ]),
       ),
     );
   }
 
-  // ─── Monster List ──────────────────────────────────────────
+  // ── Monster list ──────────────────────────────────────────
   Widget _buildMonsterList() {
     if (_isLoading) {
       return const SliverFillRemaining(
-        child: Center(
-            child:
-                CircularProgressIndicator(color: Color(0xFFE53935))),
+        child: Center(child: CircularProgressIndicator(color: _accentRed)),
       );
     }
-
     if (_filteredMonsters.isEmpty) {
-      return SliverFillRemaining(child: _buildEmptyState());
+      return SliverFillRemaining(child: _emptyState());
     }
-
     return SliverPadding(
-      padding: const EdgeInsets.only(top: 8, bottom: 100),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
-          (context, index) => _AnimatedMonsterCard(
-            monster: _filteredMonsters[index],
-            index: index,
+          (_, i) => _RPGMonsterCard(
+            monster:    _filteredMonsters[i],
+            index:      i,
             parentAnim: _listAnim,
-            onEdit: () =>
-                _goTo(EditMonsterPage(monster: _filteredMonsters[index])),
-            onDelete: () => _deleteMonster(_filteredMonsters[index]),
+            onEdit:     () => _push(EditMonsterPage(monster: _filteredMonsters[i])),
+            onDelete:   () => _deleteMonster(_filteredMonsters[i]),
           ),
           childCount: _filteredMonsters.length,
         ),
@@ -609,60 +594,218 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _emptyState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.search_off_rounded,
-              size: 64, color: Colors.white.withValues(alpha: 0.1)),
-          const SizedBox(height: 16),
-          Text(
-            _searchQuery.isNotEmpty
-                ? 'No monsters match "$_searchQuery"'
-                : 'No monsters yet',
-            style: const TextStyle(
-                color: Color(0xFF616161), fontSize: 15),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Container(
+          width: 72, height: 72,
+          decoration: BoxDecoration(
+            color: _accentRed.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(20),
           ),
-          const SizedBox(height: 8),
-          TextButton.icon(
-            onPressed: () => _goTo(const AddMonsterPage()),
-            icon: const Icon(Icons.add, size: 16),
-            label: const Text('Add your first monster'),
-            style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFFE53935)),
-          ),
-        ],
-      ),
+          child: const Icon(Icons.search_off_rounded, size: 30, color: _border),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          _searchQuery.isNotEmpty
+              ? 'No results for "$_searchQuery"'
+              : 'No monsters yet',
+          style: const TextStyle(color: _textSecondary, fontSize: 14),
+        ),
+        const SizedBox(height: 12),
+        TextButton.icon(
+          onPressed: () => _push(const AddMonsterPage()),
+          icon: const Icon(Icons.add, size: 15),
+          label: const Text('Add first monster'),
+          style: TextButton.styleFrom(foregroundColor: _accentRed),
+        ),
+      ]),
     );
   }
 
-  // ─── FAB ───────────────────────────────────────────────────
+  // ── FAB ───────────────────────────────────────────────────
   Widget _buildFAB() {
-    return ScaleTransition(
-      scale: _fabScale,
-      child: FloatingActionButton.extended(
-        onPressed: () => _goTo(const AddMonsterPage()),
-        backgroundColor: const Color(0xFFE53935),
-        foregroundColor: Colors.white,
-        elevation: 3,
-        icon: const Icon(Icons.add, size: 20),
-        label: const Text('Add Monster',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+    return FloatingActionButton(
+      onPressed: () => _push(const AddMonsterPage()),
+      backgroundColor: _accentRed,
+      foregroundColor: Colors.white,
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: const Icon(Icons.add, size: 22),
+    );
+  }
+
+  // ── Bottom nav ────────────────────────────────────────────
+  Widget _buildBottomNav() {
+    return ClipRect(
+      child: Stack(children: [
+        // Hex grid background
+        Positioned.fill(
+          child: CustomPaint(painter: _HexGridPainter()),
+        ),
+        // Nav content over grid
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D0D14).withValues(alpha: 0.92),
+            border: const Border(
+              top: BorderSide(color: Color(0xFF2E2B4A), width: 1.0),
+            ),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Row(children: [
+                _NavItem(icon: Icons.home_rounded,        label: 'Home',  index: 0, current: _navIndex, onTap: _onNavTap),
+                _NavItem(icon: Icons.catching_pokemon,    label: 'Catch', index: 1, current: _navIndex, onTap: _onNavTap),
+                _NavItem(icon: Icons.map_outlined,        label: 'Map',   index: 2, current: _navIndex, onTap: _onNavTap),
+                _NavItem(icon: Icons.leaderboard_rounded, label: 'Ranks', index: 3, current: _navIndex, onTap: _onNavTap),
+              ]),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  // ── Admin bottom sheet ────────────────────────────────────
+  void _showAdminSheet() {
+    HapticFeedback.lightImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: _surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: _border, width: 0.5)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Handle
+            Center(
+              child: Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                    color: _border, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const SizedBox(height: 20),
+            // Section label
+            const Padding(
+              padding: EdgeInsets.only(left: 4, bottom: 8),
+              child: Text('ADMIN CONTROLS',
+                  style: TextStyle(
+                      color: _textMuted,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.5)),
+            ),
+            _SheetItem(icon: Icons.add_circle_outline,  label: 'Add Monster',     color: _accentGreen,             onTap: () { Navigator.pop(context); _push(const AddMonsterPage()); }),
+            _SheetItem(icon: Icons.edit_outlined,       label: 'Edit Monsters',   color: _accentBlue,              onTap: () { Navigator.pop(context); _push(const EditMonstersPage()); }),
+            _SheetItem(icon: Icons.delete_outline,      label: 'Delete Monsters', color: const Color(0xFFE24B4A),  onTap: () { Navigator.pop(context); _push(const DeleteMonsterPage()); }),
+            _SheetItem(icon: Icons.group_outlined,      label: 'Manage Players',  color: const Color(0xFF7F77DD),  onTap: () { Navigator.pop(context); _push(const PlayersListPage()); }),
+            const SizedBox(height: 4),
+            const Divider(color: _border, thickness: 0.5),
+            _SheetItem(icon: Icons.logout_rounded,      label: 'Log Out',         color: const Color(0xFFE24B4A),  onTap: () { Navigator.pop(context); _logout(); }),
+          ],
+        ),
       ),
     );
   }
 }
 
-// ─── Animated Monster Card ─────────────────────────────────
-class _AnimatedMonsterCard extends StatefulWidget {
-  final Monster monster;
-  final int index;
-  final AnimationController parentAnim;
-  final VoidCallback? onEdit;
-  final VoidCallback? onDelete;
+// ─────────────────────────────────────────────────────────────
+// HERO ACTION CARD
+// ─────────────────────────────────────────────────────────────
+class _HeroCard extends StatefulWidget {
+  final IconData  icon;
+  final String    title;
+  final String    sub;
+  final Color     color;
+  final VoidCallback onTap;
 
-  const _AnimatedMonsterCard({
+  const _HeroCard({
+    required this.icon,
+    required this.title,
+    required this.sub,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  State<_HeroCard> createState() => _HeroCardState();
+}
+
+class _HeroCardState extends State<_HeroCard> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown:  (_) => setState(() => _pressed = true),
+      onTapUp:    (_) { setState(() => _pressed = false); widget.onTap(); },
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale:    _pressed ? 0.94 : 1.0,
+        duration: const Duration(milliseconds: 110),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: widget.color.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: widget.color.withValues(alpha: 0.22), width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: widget.color.withValues(alpha: 0.08),
+                blurRadius: 18,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: widget.color.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(widget.icon, color: widget.color, size: 21),
+            ),
+            const SizedBox(height: 14),
+            Text(widget.title,
+                style: const TextStyle(
+                    color: _textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800)),
+            const SizedBox(height: 3),
+            Text(widget.sub,
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.30),
+                    fontSize: 10,
+                    height: 1.4)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// RPG MONSTER CARD
+// ─────────────────────────────────────────────────────────────
+class _RPGMonsterCard extends StatefulWidget {
+  final Monster            monster;
+  final int                index;
+  final AnimationController parentAnim;
+  final VoidCallback?      onEdit;
+  final VoidCallback?      onDelete;
+
+  const _RPGMonsterCard({
     required this.monster,
     required this.index,
     required this.parentAnim,
@@ -671,333 +814,410 @@ class _AnimatedMonsterCard extends StatefulWidget {
   });
 
   @override
-  State<_AnimatedMonsterCard> createState() => _AnimatedMonsterCardState();
+  State<_RPGMonsterCard> createState() => _RPGMonsterCardState();
 }
 
-class _AnimatedMonsterCardState extends State<_AnimatedMonsterCard> {
+class _RPGMonsterCardState extends State<_RPGMonsterCard> {
   late Animation<double> _fade;
   late Animation<Offset> _slide;
 
   @override
   void initState() {
     super.initState();
-    final delay    = (widget.index * 0.08).clamp(0.0, 0.7);
-    final end      = (delay + 0.4).clamp(0.0, 1.0);
+    final delay    = (widget.index * 0.055).clamp(0.0, 0.55);
+    final end      = (delay + 0.40).clamp(0.0, 1.0);
     final interval = Interval(delay, end, curve: Curves.easeOutCubic);
-
     _fade  = Tween<double>(begin: 0, end: 1)
         .animate(CurvedAnimation(parent: widget.parentAnim, curve: interval));
-    _slide = Tween<Offset>(
-            begin: const Offset(0, 0.3), end: Offset.zero)
+    _slide = Tween<Offset>(begin: const Offset(0, 0.18), end: Offset.zero)
         .animate(CurvedAnimation(parent: widget.parentAnim, curve: interval));
   }
 
   @override
   Widget build(BuildContext context) {
+    final m          = widget.monster;
+    final color      = _typeColor(m.monsterType);
+    final isCaptured = m.monsterName.endsWith('(Captured)');
+
     return FadeTransition(
       opacity: _fade,
       child: SlideTransition(
         position: _slide,
-        child: _MonsterListCard(
-          monster: widget.monster,
-          onEdit:   widget.onEdit,
-          onDelete: widget.onDelete,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: _surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isCaptured
+                  ? _accentGreen.withValues(alpha: 0.18)
+                  : color.withValues(alpha: 0.14),
+              width: 0.5,
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: IntrinsicHeight(
+              child: Row(children: [
+                // ── Colored left accent bar ──
+                Container(
+                  width: 3,
+                  color: isCaptured ? _accentGreen : color,
+                ),
+                // ── Card body ──
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+                    child: Row(children: [
+                      // Avatar
+                      Container(
+                        width: 50, height: 50,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.09),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: color.withValues(alpha: 0.18), width: 0.5),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: m.pictureUrl != null && m.pictureUrl!.isNotEmpty
+                              ? Image.network(m.pictureUrl!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      _avatarFallback(m.monsterName, color))
+                              : _avatarFallback(m.monsterName, color),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Info
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Name row
+                            Row(children: [
+                              Expanded(
+                                child: Text(
+                                  m.monsterName,
+                                  style: TextStyle(
+                                    color: isCaptured ? _textSecondary : _textPrimary,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    decoration: isCaptured
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                    decorationColor: _textMuted,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (isCaptured) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 5, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: _accentGreen.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text('CAUGHT',
+                                      style: TextStyle(
+                                          color: _accentGreen,
+                                          fontSize: 7,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.6)),
+                                ),
+                              ],
+                            ]),
+                            const SizedBox(height: 5),
+                            // Type + radius
+                            Row(children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 7, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.10),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(m.monsterType.toUpperCase(),
+                                    style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w700,
+                                        color: color,
+                                        letterSpacing: 0.8)),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(Icons.radar,
+                                  size: 11,
+                                  color: Colors.white.withValues(alpha: 0.18)),
+                              const SizedBox(width: 3),
+                              Text(
+                                '${m.spawnRadiusMeters.toStringAsFixed(0)}m',
+                                style: const TextStyle(
+                                    color: _textSecondary, fontSize: 11),
+                              ),
+                            ]),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Action buttons
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (widget.onEdit != null)
+                            _CardBtn(
+                                icon: Icons.edit_outlined,
+                                color: _accentBlue,
+                                onTap: widget.onEdit!),
+                          if (widget.onDelete != null) ...[
+                            const SizedBox(height: 6),
+                            _CardBtn(
+                                icon: Icons.delete_outline,
+                                color: const Color(0xFFE24B4A),
+                                onTap: widget.onDelete!),
+                          ],
+                        ],
+                      ),
+                    ]),
+                  ),
+                ),
+              ]),
+            ),
+          ),
         ),
       ),
     );
   }
+
+  Widget _avatarFallback(String name, Color color) => Container(
+        color: color.withValues(alpha: 0.07),
+        child: Center(
+          child: Text(
+            name.isNotEmpty ? name[0].toUpperCase() : '?',
+            style: TextStyle(
+                color: color, fontSize: 20, fontWeight: FontWeight.w900),
+          ),
+        ),
+      );
 }
 
-// ─── Monster List Card ─────────────────────────────────────
-class _MonsterListCard extends StatelessWidget {
-  final Monster monster;
-  final VoidCallback? onEdit;
-  final VoidCallback? onDelete;
+// ─────────────────────────────────────────────────────────────
+// SMALL REUSABLE WIDGETS
+// ─────────────────────────────────────────────────────────────
 
-  const _MonsterListCard({
-    required this.monster,
-    this.onEdit,
-    this.onDelete,
-  });
+class _StatCell extends StatelessWidget {
+  final String value;
+  final String label;
+  final Color  color;
+  const _StatCell({required this.value, required this.label, required this.color});
 
   @override
-  Widget build(BuildContext context) {
-    final typeColor = _typeColor(monster.monsterType);
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF2C2C2C), width: 0.5),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            // Image / avatar
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: SizedBox(
-                width: 68, height: 68,
-                child: monster.pictureUrl != null &&
-                        monster.pictureUrl!.isNotEmpty
-                    ? Image.network(
-                        monster.pictureUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            _fallback(monster.monsterName, typeColor),
-                        loadingBuilder: (_, child, progress) {
-                          if (progress == null) return child;
-                          return Container(
-                            color: const Color(0xFF2A2A2A),
-                            child: const Center(
-                              child: SizedBox(
-                                width: 18, height: 18,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Color(0xFFE53935)),
-                              ),
-                            ),
-                          );
-                        },
-                      )
-                    : _fallback(monster.monsterName, typeColor),
-              ),
-            ),
-            const SizedBox(width: 14),
-            // Info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(monster.monsterName,
-                      style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 4),
-                  _TypeBadge(type: monster.monsterType),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(Icons.radar,
-                          size: 12, color: Color(0xFF757575)),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${monster.spawnRadiusMeters.toStringAsFixed(0)}m radius',
-                        style: const TextStyle(
-                            fontSize: 11, color: Color(0xFF757575)),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            // Actions
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (onEdit != null)
-                  _ActionBtn(
-                    icon: Icons.edit_outlined,
-                    color: const Color(0xFF378ADD),
-                    tooltip: 'Edit',
-                    onTap: onEdit!,
-                  ),
-                if (onDelete != null) ...[
-                  const SizedBox(height: 6),
-                  _ActionBtn(
-                    icon: Icons.delete_outline,
-                    color: const Color(0xFFE24B4A),
-                    tooltip: 'Delete',
-                    onTap: onDelete!,
-                  ),
-                ],
+  Widget build(BuildContext context) => Expanded(
+        child: Column(children: [
+          // Icon badge with glow
+          Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(9),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.20),
+                  blurRadius: 8,
+                  spreadRadius: 0,
+                ),
               ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _fallback(String name, Color color) {
-    return Container(
-      color: const Color(0xFF2A2A2A),
-      child: Center(
-        child: Text(
-          name.isNotEmpty ? name[0].toUpperCase() : '?',
-          style: TextStyle(
-              fontSize: 26, fontWeight: FontWeight.bold, color: color),
-        ),
-      ),
-    );
-  }
-
-  Color _typeColor(String type) {
-    switch (type.toLowerCase()) {
-      case 'fire':     return const Color(0xFFE53935);
-      case 'water':    return const Color(0xFF378ADD);
-      case 'grass':    return const Color(0xFF1D9E75);
-      case 'electric': return const Color(0xFFEF9F27);
-      case 'psychic':  return const Color(0xFF7F77DD);
-      case 'ice':      return const Color(0xFF5DCAA5);
-      case 'rock':     return const Color(0xFF888780);
-      case 'ghost':    return const Color(0xFF534AB7);
-      case 'dragon':   return const Color(0xFFD85A30);
-      default:         return const Color(0xFF9E9E9E);
-    }
-  }
+            child: Icon(
+              label == 'TOTAL'
+                  ? Icons.pets_rounded
+                  : label == 'AVAILABLE'
+                      ? Icons.location_on_rounded
+                      : Icons.catching_pokemon_rounded,
+              color: color,
+              size: 15,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(value,
+              style: TextStyle(
+                  color: color,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.5)),
+          const SizedBox(height: 2),
+          Text(label,
+              style: const TextStyle(
+                  color: _textMuted,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2)),
+        ]),
+      );
 }
 
-// ─── Type Badge ────────────────────────────────────────────
-class _TypeBadge extends StatelessWidget {
-  final String type;
-  const _TypeBadge({required this.type});
+class _CardBtn extends StatelessWidget {
+  final IconData     icon;
+  final Color        color;
+  final VoidCallback onTap;
+  const _CardBtn({required this.icon, required this.color, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
-    final color = _typeColor(type);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.4), width: 0.5),
-      ),
-      child: Text(
-        type.toUpperCase(),
-        style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            color: color,
-            letterSpacing: 0.8),
-      ),
-    );
-  }
-
-  Color _typeColor(String type) {
-    switch (type.toLowerCase()) {
-      case 'fire':     return const Color(0xFFE53935);
-      case 'water':    return const Color(0xFF378ADD);
-      case 'grass':    return const Color(0xFF1D9E75);
-      case 'electric': return const Color(0xFFEF9F27);
-      case 'psychic':  return const Color(0xFF7F77DD);
-      case 'ice':      return const Color(0xFF5DCAA5);
-      case 'rock':     return const Color(0xFF888780);
-      case 'ghost':    return const Color(0xFF534AB7);
-      case 'dragon':   return const Color(0xFFD85A30);
-      default:         return const Color(0xFF9E9E9E);
-    }
-  }
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 30, height: 30,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withValues(alpha: 0.18), width: 0.5),
+          ),
+          child: Icon(icon, size: 14, color: color),
+        ),
+      );
 }
 
-// ─── Small action button ───────────────────────────────────
-class _ActionBtn extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String tooltip;
+class _IconBtn extends StatelessWidget {
+  final IconData     icon;
   final VoidCallback onTap;
+  const _IconBtn({required this.icon, required this.onTap});
 
-  const _ActionBtn({
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 40, height: 40,
+          decoration: BoxDecoration(
+            color: _surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _border, width: 0.5),
+          ),
+          child: Icon(icon, color: _textSecondary, size: 18),
+        ),
+      );
+}
+
+class _NavItem extends StatelessWidget {
+  final IconData       icon;
+  final String         label;
+  final int            index;
+  final int            current;
+  final void Function(int) onTap;
+
+  const _NavItem({
     required this.icon,
-    required this.color,
-    required this.tooltip,
+    required this.label,
+    required this.index,
+    required this.current,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          width: 34, height: 34,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-                color: color.withValues(alpha: 0.3), width: 0.5),
-          ),
-          child: Icon(icon, size: 16, color: color),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Quick Action Data ─────────────────────────────────────
-class _QuickAction {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-  const _QuickAction(
-      {required this.icon,
-      required this.label,
-      required this.color,
-      required this.onTap});
-}
-
-// ─── Quick Action Tile ─────────────────────────────────────
-class _QuickActionTile extends StatefulWidget {
-  final _QuickAction action;
-  const _QuickActionTile({required this.action});
-
-  @override
-  State<_QuickActionTile> createState() => _QuickActionTileState();
-}
-
-class _QuickActionTileState extends State<_QuickActionTile> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+    final selected = index == current;
+    return Expanded(
       child: GestureDetector(
-        onTapDown: (_) => setState(() => _pressed = true),
-        onTapUp:   (_) => setState(() => _pressed = false),
-        onTapCancel: () => setState(() => _pressed = false),
-        onTap: widget.action.onTap,
-        child: AnimatedScale(
-          scale: _pressed ? 0.93 : 1.0,
-          duration: const Duration(milliseconds: 120),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12),
+        onTap: () => onTap(index),
+        behavior: HitTestBehavior.opaque,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
-              color: widget.action.color.withValues(alpha: 0.08),
+              color: selected
+                  ? _accentRed.withValues(alpha: 0.12)
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: widget.action.color.withValues(alpha: 0.25),
-                  width: 0.5),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(widget.action.icon,
-                    color: widget.action.color, size: 22),
-                const SizedBox(height: 6),
-                Text(
-                  widget.action.label,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    color: widget.action.color,
-                    height: 1.3,
-                  ),
-                ),
-              ],
-            ),
+            child: Icon(icon,
+                size: 22,
+                color: selected ? _accentRed : _textMuted),
           ),
-        ),
+          const SizedBox(height: 2),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                  color: selected ? _accentRed : _textMuted)),
+        ]),
       ),
     );
   }
+}
+
+class _SheetItem extends StatelessWidget {
+  final IconData     icon;
+  final String       label;
+  final Color        color;
+  final VoidCallback onTap;
+
+  const _SheetItem({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        leading: Container(
+          width: 36, height: 36,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: color, size: 18),
+        ),
+        title: Text(label,
+            style: const TextStyle(
+                color: _textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w500)),
+        onTap: onTap,
+        minLeadingWidth: 36,
+      );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Hex grid painter — shared with login/register pages
+// ─────────────────────────────────────────────────────────────
+class _HexGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF1C1A2E).withValues(alpha: 0.55)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.6;
+
+    const r    = 28.0;
+    final w    = sqrt(3) * r;
+    final h    = 2.0 * r;
+    final cols = (size.width  / w).ceil() + 2;
+    final rows = (size.height / (h * 0.75)).ceil() + 2;
+
+    for (int row = -1; row < rows; row++) {
+      for (int col = -1; col < cols; col++) {
+        final offX = (row % 2 == 0) ? 0.0 : w / 2;
+        _drawHex(canvas, paint, col * w + offX, row * h * 0.75, r);
+      }
+    }
+  }
+
+  void _drawHex(Canvas canvas, Paint p, double cx, double cy, double r) {
+    final path = Path();
+    for (int i = 0; i < 6; i++) {
+      final a = pi / 180 * (60 * i - 30);
+      if (i == 0) path.moveTo(cx + r * cos(a), cy + r * sin(a));
+      else        path.lineTo(cx + r * cos(a), cy + r * sin(a));
+    }
+    path.close();
+    canvas.drawPath(path, p);
+  }
+
+  @override
+  bool shouldRepaint(_HexGridPainter _) => false;
 }

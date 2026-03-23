@@ -3,168 +3,88 @@
 
 ---
 
+## Project Overview
+
+HAUPokemon Monsters is a location-based Flutter application for catching and managing virtual monsters. Originally built with a PHP/MySQL backend, it has been significantly enhanced to include full offline capabilities using local SQLite storage, an advanced authentication system, and administrative features.
+
+## Core Features
+
+- **Authentication System:** Comprehensive user login, registration (`register_page.dart`), and secure on-device hashed password storage using the `crypto` package.
+- **Admin Dashboard:** Specific administrative functions including viewing, adding, editing, and deleting players (`players_list_page.dart`, `add_player_page.dart`, `edit_player_page.dart`) and full control over monsters.
+- **Player Interaction:** Players can view caught monsters, navigate the map to catch new monsters (`catch_monster_page.dart`), and view their rankings (`display_rankings_page.dart`).
+- **Location & Map Integration:** Interactive map displays using `flutter_map` and `latlong2`, paired with `geolocator` to find and catch monsters based on GPS coordinates.
+- **Offline Data Storage:** The app uses `sqflite` for a robust local database (`local_db_service.dart`), allowing the application to smoothly operate without necessarily relying on an external network or backend.
+- **Multimedia Experiences:** Uses `audioplayers` for alerts and sounds, `torch_light` for flashlight effects, and `image_picker` for custom monster images.
+
+---
+
 ## Project Structure
 
-```
+```text
 haumonsters/
 ├── pubspec.yaml
-├── android_manifest_permissions.xml     ← paste into AndroidManifest.xml
+├── android_manifest_permissions.xml
 ├── lib/
 │   ├── main.dart
 │   ├── models/
-│   │   ├── monster_model.dart
+│   │   ├── monster_model.dart            ← defines Monster properties
+│   │   ├── player_model.dart             ← defines Player/User properties
 │   │   └── player_ranking_model.dart
 │   ├── pages/
-│   │   ├── dashboard_page.dart
+│   │   ├── splash_page.dart
+│   │   ├── login_page.dart               ← login form and routing based on role
+│   │   ├── register_page.dart            ← sign up form for new users
+│   │   ├── dashboard_page.dart           ← main navigation hub
 │   │   ├── add_monster_page.dart
-│   │   ├── edit_monster_page.dart       ← single monster edit form
-│   │   ├── edit_monsters_page.dart      ← list + navigate to edit
+│   │   ├── edit_monster_page.dart
+│   │   ├── edit_monsters_page.dart
 │   │   ├── delete_monster_page.dart
-│   │   ├── catch_monster_page.dart      ← placeholder (future)
-│   │   ├── display_rankings_page.dart   ← placeholder (future)
-│   │   ├── map_page.dart                ← placeholder (future)
-│   │   └── monster_details_page.dart    ← placeholder (future)
+│   │   ├── catch_monster_page.dart       ← real-time location and interactive map map view
+│   │   ├── display_rankings_page.dart
+│   │   ├── map_page.dart
+│   │   ├── monster_details_page.dart
+│   │   ├── players_list_page.dart        ← Admin page to list all players
+│   │   ├── add_player_page.dart          ← Admin page to manually register players
+│   │   └── edit_player_page.dart         ← Admin page to edit player credentials
 │   └── services/
-│       └── api_service.dart
-└── api/                                 ← deploy to your PHP server
-    ├── hauconnect.php
-    ├── add_monster.php
-    ├── get_monsters.php
-    ├── update_monster.php
-    ├── delete_monster.php
-    ├── upload_monster_image.php
-    └── schema.sql
+│       ├── api_service.dart              ← network API / legacy remote database
+│       └── local_db_service.dart         ← primary SQLite local database management
+└── api/                                  ← (Optional) legacy PHP backend deployment
+    ├── schema.sql
+    └── *.php scripts
 ```
 
 ---
 
-## Flutter Setup
+## Setup & Run Instructions
 
-### 1. Install dependencies
+### 1. Install Dependencies
 ```bash
 flutter pub get
 ```
 
-### 2. Add Android permissions
-Copy the contents of `android_manifest_permissions.xml` into:
-```
+### 2. Configure Android Permissions
+Ensure you have the required Android permissions (Location, Internet, Camera). Use `android_manifest_permissions.xml` as a reference if installing fresh, copying its contents inside the `<manifest>` tag, **before** the `<application>` tag in:
+```text
 android/app/src/main/AndroidManifest.xml
 ```
-Paste inside the `<manifest>` tag, **before** `<application>`.
 
-### 3. Update server IP
-Open `lib/services/api_service.dart` and change `baseUrl`:
-```dart
-static const String baseUrl = "http://YOUR_SERVER_IP";
-```
-
----
-
-## PHP Backend Setup
-
-### 1. Import the database
+### 3. Build & Run
+To run the app on a connected device or emulator:
 ```bash
-mysql -u root -p < api/schema.sql
+flutter run
 ```
-
-### 2. Update credentials in `hauconnect.php`
-```php
-$host     = "localhost";
-$dbname   = "haumonstersDB";
-$username = "YOUR_DB_USER";
-$password = "YOUR_DB_PASSWORD";
-```
-
-### 3. Deploy API files
-Upload all files inside `api/` to your web server root (e.g. `/var/www/html/`).
-
-### 4. Create the uploads folder (for image upload)
+To build a release APK:
 ```bash
-mkdir -p /var/www/html/uploads
-chmod 777 /var/www/html/uploads
-```
-
-### 5. Update the image URL in `upload_monster_image.php`
-```php
-$imageUrl = "http://YOUR_SERVER_IP/uploads/" . $newFileName;
+flutter build apk --release
 ```
 
 ---
 
-## API Endpoints
+## Technical & Architecture Notes
 
-| Endpoint                   | Method | Description             |
-|----------------------------|--------|-------------------------|
-| `/add_monster.php`         | POST   | Create a new monster    |
-| `/get_monsters.php`        | GET    | Fetch all monsters      |
-| `/update_monster.php`      | POST   | Update monster by ID    |
-| `/delete_monster.php`      | POST   | Delete monster by ID    |
-| `/upload_monster_image.php`| POST   | Upload monster image    |
+1. **Local vs API:** The application has seamlessly transitioned towards prioritizing local storage (`local_db_service.dart`) utilizing `sqflite`, making it fully functional offline. 
+2. **Security:** Passwords are hashed locally using the `crypto` library (SHA-256) ensuring user credentials are not stored in plain text.
+3. **Map Rendering:** The app does not rely directly on Google Maps widget, instead employing the highly customizable `flutter_map` widget with localized tiles/servers via `latlong2`.
 
 ---
-
-## Database
-
-**Name:** `haumonstersDB`  
-**Server (exam default):** `http://3.0.90.110`
-
-### `monsterstbl` columns
-
-| Column               | Type             | Notes              |
-|----------------------|------------------|--------------------|
-| `monster_id`         | INT UNSIGNED     | PK, Auto Increment |
-| `monster_name`       | VARCHAR(100)     | Required           |
-| `monster_type`       | VARCHAR(100)     | Required           |
-| `spawn_latitude`     | DECIMAL(10,7)    | Required           |
-| `spawn_longitude`    | DECIMAL(10,7)    | Required           |
-| `spawn_radius_meters`| DECIMAL(10,2)    | Default: 100.00    |
-| `picture_url`        | VARCHAR(500)     | Nullable           |
-
----
-
-## Completed / Missing Code Notes
-
-The exam PDF had two **"INPUT THE MISSING CODES HERE"** gaps:
-
-### 1. `edit_monsters_page.dart` — `_openEdit()`
-```dart
-Future<void> _openEdit(Monster monster) async {
-  final updated = await Navigator.push<bool>(
-    context,
-    MaterialPageRoute(builder: (_) => EditMonsterPage(monster: monster)),
-  );
-  if (updated == true) {
-    _refresh();
-  }
-}
-```
-
-### 2. `delete_monster_page.dart` — `_deleteMonster()` confirmation dialog
-```dart
-final confirmed = await showDialog<bool>(
-  context: context,
-  builder: (context) => AlertDialog(
-    title: const Text("Delete Monster"),
-    content: Text("Are you sure you want to delete ${monster.monsterName}?"),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context, false),
-        child: const Text("Cancel"),
-      ),
-      ElevatedButton(
-        onPressed: () => Navigator.pop(context, true),
-        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-        child: const Text("Delete", style: TextStyle(color: Colors.white)),
-      ),
-    ],
-  ),
-);
-```
-
----
-
-## Submission Requirements (per exam rubric)
-- Screen record demo video working on a mobile device
-- APK file
-- Full source code
-- Wireframes / initial design draft
